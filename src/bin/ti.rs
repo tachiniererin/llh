@@ -2,9 +2,10 @@ extern crate reqwest;
 extern crate select;
 extern crate serde;
 
+use llh as _;
+
 use chrono::Utc;
 use reqwest::{header::USER_AGENT, Url};
-use select::document::Document;
 use select::predicate::{Attr, Class, Name, Predicate};
 use serde::Deserialize;
 use serde_json::json;
@@ -39,19 +40,6 @@ struct Control {
     desc: String,
 }
 
-async fn get_doc(link: &str) -> Result<Document, reqwest::Error> {
-    let client = reqwest::Client::new();
-    let res = client
-        .get(Url::parse(link).unwrap())
-        .header(USER_AGENT, "curl/7.72.0")
-        .send()
-        .await?;
-
-    let body = res.text().await?;
-
-    Ok(Document::from(body.as_str()))
-}
-
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let mut top: Vec<String> = Vec::new();
@@ -65,7 +53,7 @@ async fn main() -> Result<(), reqwest::Error> {
 
     let mut start = Instant::now();
 
-    get_doc("https://www.ti.com")
+    llh::get_doc("https://www.ti.com")
         .await?
         .find(Attr("id", "sub_products").descendant(Class("column").descendant(Name("a"))))
         .filter_map(|n| n.attr("href"))
@@ -118,7 +106,7 @@ async fn main() -> Result<(), reqwest::Error> {
     println!("took {:?}", duration);
 
     // write out the data we produced
-    let path = Path::new("ti_categories.json");
+    let path = Path::new("json/ti/categories.json");
     let display = path.display();
 
     let mut file = match File::create(&path) {
@@ -131,7 +119,7 @@ async fn main() -> Result<(), reqwest::Error> {
         Ok(_) => println!("successfully wrote to {}", display),
     }
 
-    let path = Path::new("ti_data.json");
+    let path = Path::new("json/ti/data.json");
     let display = path.display();
 
     let mut file = match File::create(&path) {
@@ -148,7 +136,7 @@ async fn main() -> Result<(), reqwest::Error> {
 }
 
 async fn parse_category(cat_lt: &mut HashSet<String>, link: String) -> Result<(), reqwest::Error> {
-    let doc = get_doc(link.as_str()).await?;
+    let doc = llh::get_doc(link.as_str()).await?;
 
     doc.find(Class("ti_left-nav-container").descendant(Name("a")))
         .filter_map(|n| n.attr("href"))
@@ -164,7 +152,7 @@ async fn parse_sub_category(
     link: String,
 ) -> Result<(), reqwest::Error> {
     let s = link.replace("overview.html", "products.html");
-    let doc = get_doc(s.as_str()).await?;
+    let doc = llh::get_doc(s.as_str()).await?;
     let mut category = String::new();
 
     doc.find(Name("h1"))
