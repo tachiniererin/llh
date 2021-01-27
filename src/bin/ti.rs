@@ -5,6 +5,7 @@ extern crate serde;
 use llh as _;
 
 use chrono::Utc;
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{header::USER_AGENT, Url};
 use select::predicate::{Attr, Class, Name, Predicate};
 use serde::Deserialize;
@@ -14,7 +15,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::time::Instant;
-use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Deserialize)]
 struct Criteria {
@@ -50,17 +50,20 @@ async fn main() -> Result<(), reqwest::Error> {
 	let mut db: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
 
 	let pb_style = ProgressStyle::default_bar()
-		.template("{msg} {bar:80.magenta/blue} {pos:>7}/{len:7}")
+		.template("{msg} {bar:40.magenta/blue} {pos}/{len} ({eta})")
 		.progress_chars("##-");
 
-	println!("Start scraping at {}", Utc::now());
+	println!("Start scraping TI at {}", Utc::now());
 	print!("Parsing main page... ");
 
 	let mut start = Instant::now();
 
 	llh::get_doc("https://www.ti.com")
 		.await?
-		.find(Attr("id", "responsiveHeader-panel-productList").descendant(Name("li").descendant(Name("a"))))
+		.find(
+			Attr("id", "responsiveHeader-panel-productList")
+				.descendant(Name("li").descendant(Name("a"))),
+		)
 		.filter_map(|n| n.attr("href"))
 		.filter(|a| {
 			a.starts_with("//") && a.ends_with("overview.html") && !a.contains("/applications/")
@@ -163,7 +166,11 @@ async fn main() -> Result<(), reqwest::Error> {
 	pb.set_message("Fetching datasheets...");
 
 	for part in db.keys() {
-		llh::save_pdf(format!("https://www.ti.com/lit/gpn/{}", part), format!("pdf/ti/{}.pdf", part)).await?;
+		llh::save_pdf(
+			format!("https://www.ti.com/lit/gpn/{}", part),
+			format!("pdf/ti/{}.pdf", part),
+		)
+		.await?;
 		pb.inc(1);
 	}
 
@@ -220,7 +227,7 @@ async fn load_criteria(
 	);
 	let res = client
 		.get(Url::parse(url.as_str()).unwrap())
-		.header(USER_AGENT, "curl/7.73.0")
+		.header(USER_AGENT, "curl/7.74.0")
 		.send()
 		.await?
 		.json::<Criteria>()
@@ -262,8 +269,8 @@ async fn load_results(
 				if v.len() < c.len() {
 					m.insert(key.to_string(), c.clone());
 				} /* else {
-					println!("Duplicate key {} but newer one has less fields", key);
-				} */
+					 println!("Duplicate key {} but newer one has less fields", key);
+				 } */
 			}
 		} else {
 			m.insert(key.to_string(), c.clone());

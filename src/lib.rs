@@ -38,13 +38,19 @@ pub async fn save_json(link: String, file_name: String) -> Result<(), reqwest::E
         .await?;
 
     let body = res.text().await?;
+    // TODO: make it async and pretty too
+    let v: serde_json::Value = match serde_json::from_str(&body) {
+        Err(why) => {
+            println!("couldn't parse {}: {}", link, why);
+            return Ok(())
+        },
+        Ok(v) => v,
+    };
 
-    match file.write_all(body.as_bytes()) {
+    match file.write_all(serde_json::to_string_pretty(&v).unwrap().as_bytes()) {
         Err(why) => panic!("couldn't write to {}: {}", display, why),
-        Ok(_) => println!("successfully wrote to {}", display),
+        Ok(_) => return Ok(()),
     }
-
-    Ok(())
 }
 
 pub async fn save_pdf(link: String, file_name: String) -> Result<(), reqwest::Error> {
@@ -72,8 +78,6 @@ pub async fn save_pdf(link: String, file_name: String) -> Result<(), reqwest::Er
 
     match file.write_all(body.as_bytes()) {
         Err(why) => panic!("couldn't write to {}: {}", display, why),
-        Ok(_) => println!("successfully wrote to {}", display),
+        Ok(_) => return Ok(()),
     }
-
-    Ok(())
 }
