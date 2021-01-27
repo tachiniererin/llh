@@ -35,7 +35,7 @@ async fn main() -> Result<(), reqwest::Error> {
     let duration = start.elapsed();
     println!("took {:?}", duration);
 
-    print!("fetching all sub-categories... ");
+    println!("fetching all sub-categories... ");
     let start = Instant::now();
 
     for page in pages {
@@ -52,7 +52,7 @@ async fn main() -> Result<(), reqwest::Error> {
     let duration = start.elapsed();
     println!("took {:?}", duration);
 
-    print!("fetching all sub-categories... ");
+    println!("fetching all data-pages... ");
     let start = Instant::now();
 
     // TODO: save all the JSON data into a database

@@ -12,7 +12,7 @@ pub async fn get_doc(link: &str) -> Result<Document, reqwest::Error> {
     let client = reqwest::Client::new();
     let res = client
         .get(Url::parse(link).unwrap())
-        .header(USER_AGENT, "curl/7.72.0")
+        .header(USER_AGENT, "curl/7.74.0")
         .send()
         .await?;
 
@@ -33,7 +33,38 @@ pub async fn save_json(link: String, file_name: String) -> Result<(), reqwest::E
     let client = reqwest::Client::new();
     let res = client
         .get(Url::parse(link.as_str()).unwrap())
-        .header(USER_AGENT, "curl/7.72.0")
+        .header(USER_AGENT, "curl/7.74.0")
+        .send()
+        .await?;
+
+    let body = res.text().await?;
+
+    match file.write_all(body.as_bytes()) {
+        Err(why) => panic!("couldn't write to {}: {}", display, why),
+        Ok(_) => println!("successfully wrote to {}", display),
+    }
+
+    Ok(())
+}
+
+pub async fn save_pdf(link: String, file_name: String) -> Result<(), reqwest::Error> {
+    let path = Path::new(file_name.as_str());
+    let display = path.display();
+
+    // skip already downloaded PDFs for now
+    if Path::new(&path).exists() {
+        return Ok(())
+    }
+
+    let mut file = match File::create(&path) {
+        Err(why) => panic!("couldn't create {}: {}", display, why),
+        Ok(file) => file,
+    };
+
+    let client = reqwest::Client::new();
+    let res = client
+        .get(Url::parse(link.as_str()).unwrap())
+        .header(USER_AGENT, "curl/7.74.0")
         .send()
         .await?;
 
