@@ -5,7 +5,8 @@ extern crate serde;
 use llh as _;
 
 use chrono::Utc;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use futures::{stream, StreamExt};
+use indicatif::{ProgressBar, ProgressStyle};
 use select::predicate::{Attr, Class};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -115,10 +116,9 @@ async fn main() -> Result<(), reqwest::Error> {
     pb.finish_and_clear();
     println!("Fetching all data-pages took {:?}", duration);
 
-    let m = MultiProgress::new();
-    let pb = m.add(ProgressBar::new(data_pages.len() as u64));
-    pb.set_style(pb_style.clone());
-    pb.set_message("Fetching all datasheets from data-pages...");
+    let mpb = ProgressBar::new(data_pages.len() as u64);
+    mpb.set_style(pb_style.clone());
+    mpb.set_message("Fetching datasheets...");
 
     let start = Instant::now();
 
@@ -131,37 +131,57 @@ async fn main() -> Result<(), reqwest::Error> {
             Err(why) => panic!("couldn't create {}: {}", display, why),
             Ok(file) => file,
         };
-        let cat: Category = serde_json::from_reader(file).unwrap();
 
-        let pb_inner = m.add(ProgressBar::new(cat.rows.len() as u64));
+        // try parsing it, or skip if it can't be parsed
+        let cat: Category = match serde_json::from_reader(file) {
+            Err(why) => {
+                println!("could not parse {}: {}", display, why);
+                continue;
+            }
+            Ok(v) => v,
+        };
+
+        let pb_inner = ProgressBar::new(cat.rows.len() as u64);
         pb_inner.set_style(pb_style.clone());
         pb_inner.set_message(&format!("Fetching data-page {}...", p.0));
 
-        for p in cat.rows {
-            let ref mut pn: String = String::from("");
-            for c in p.cells {
-                if c["columnId"] == "1" {
-                    *pn = c["value"].clone();
-                    break;
+        let pdfs = stream::iter(cat.rows)
+            .map(|p| {
+                let mut pn: String = String::from("");
+                for c in p.cells {
+                    if c["columnId"] == "1" {
+                        pn = c["value"].clone();
+                        break;
+                    }
                 }
+                async move {
+                    if pn.len() == 0 {
+                        llh::empty().await
+                    } else {
+                        llh::save_pdf(
+                            format!("https://www.st.com/resource/en/datasheet/{}.pdf", pn),
+                            format!("pdf/st/{}.pdf", pn),
+                        )
+                        .await
+                    }
+                }
+            })
+            .buffer_unordered(8);
+
+        pdfs.for_each(|x| async {
+            match x {
+                Ok(_) => pb_inner.inc(1),
+                Err(e) => eprintln!("Got an error: {}", e),
             }
-            if pn.clone().len() == 0 {
-                pb_inner.inc(1);
-                continue;
-            }
-            llh::save_pdf(
-                format!("https://www.st.com/resource/en/datasheet/{}.pdf", pn),
-                format!("pdf/st/{}.pdf", pn),
-            )
-            .await?;
-            pb_inner.inc(1);
-        }
+        })
+        .await;
+
         pb_inner.finish_and_clear();
+        mpb.inc(1);
     }
 
     let duration = start.elapsed();
-    pb.finish_and_clear();
-    m.join_and_clear().unwrap();
+    mpb.finish_and_clear();
     println!("Fetching datasheets took {:?}", duration);
 
     Ok(())

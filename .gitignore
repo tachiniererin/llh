@@ -1,5 +1,16 @@
 /target
-json/ti/*.json
-json/st/*.json
-pdf/ti/*.pdf
-pdf/st/*.pdf
+
+# json product data output
+/json/ti/*.json
+/json/st/*.json
+
+# downloaded datasheets
+/pdf/ti/*
+/pdf/st/*
+
+# picolisp!?
+/pil
+
+# cargo-flamegraph default output
+/perf.data
+/flamegraph.svg

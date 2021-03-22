@@ -5,6 +5,7 @@ extern crate serde;
 use llh as _;
 
 use chrono::Utc;
+use futures::{stream, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{header::USER_AGENT, Url};
 use select::predicate::{Attr, Class, Name, Predicate};
@@ -165,14 +166,26 @@ async fn main() -> Result<(), reqwest::Error> {
 	pb.set_style(pb_style.clone());
 	pb.set_message("Fetching datasheets...");
 
-	for part in db.keys() {
-		llh::save_pdf(
-			format!("https://www.ti.com/lit/gpn/{}", part),
-			format!("pdf/ti/{}.pdf", part),
-		)
-		.await?;
-		pb.inc(1);
-	}
+	let pdfs = stream::iter(db.keys())
+		.map(|part| {
+			async move {
+				llh::save_pdf(
+					format!("https://www.ti.com/lit/gpn/{}", part),
+					format!("pdf/ti/{}.pdf", part),
+				)
+				.await
+			}
+		})
+		.buffer_unordered(4);
+
+	pdfs
+		.for_each(|x| async {
+			match x {
+				Ok(_) => pb.inc(1),
+				Err(e) => eprintln!("Got an error: {}", e),
+			}
+		})
+		.await;
 
 	Ok(())
 }
@@ -269,8 +282,8 @@ async fn load_results(
 				if v.len() < c.len() {
 					m.insert(key.to_string(), c.clone());
 				} /* else {
-					 println!("Duplicate key {} but newer one has less fields", key);
-				 } */
+					  println!("Duplicate key {} but newer one has less fields", key);
+				  } */
 			}
 		} else {
 			m.insert(key.to_string(), c.clone());
