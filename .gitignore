@@ -13,4 +13,5 @@
 
 # cargo-flamegraph default output
 /perf.data
+/perf.data.*
 /flamegraph.svg
