@@ -2,7 +2,7 @@ extern crate reqwest;
 extern crate select;
 extern crate serde;
 
-use reqwest::{header::USER_AGENT, Url};
+use reqwest::{header::USER_AGENT, StatusCode, Url};
 use select::document::Document;
 use std::fs::File;
 use std::io::prelude::*;
@@ -41,7 +41,7 @@ pub async fn save_json(link: String, file_name: String) -> Result<(), reqwest::E
     // TODO: make it async and pretty too
     let v: serde_json::Value = match serde_json::from_str(&body) {
         Err(why) => {
-            println!("couldn't parse {}: {}", link, why);
+            eprintln!("couldn't parse {}: {}", link, why);
             return Ok(());
         }
         Ok(v) => v,
@@ -78,7 +78,13 @@ pub async fn save_pdf(link: String, file_name: String) -> Result<(), reqwest::Er
 
     let res = match res.error_for_status() {
         Ok(res) => res,
-        Err(why) => panic!("could not get datasheet ({}): {}", link, why),
+        Err(why) => {
+            match why.status().unwrap() {
+                StatusCode::NOT_FOUND => return Ok(()),
+                StatusCode::FORBIDDEN => panic!("url {}: 403", link),
+                default => panic!("unhandled request error for {}: {}", link, default),
+            }
+        },
     };
 
     let body = res.bytes().await?;
