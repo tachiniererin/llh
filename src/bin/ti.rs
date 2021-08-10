@@ -16,6 +16,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::time::Instant;
+use clap::{Arg, App};
 
 #[derive(Deserialize)]
 struct Criteria {
@@ -49,7 +50,21 @@ async fn main() -> Result<(), reqwest::Error> {
     let mut cat_num: HashMap<String, String> = HashMap::new();
     let mut tl: HashMap<String, (String, String)> = HashMap::new();
     let mut db: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
-    let build_db = false;
+
+	let matches = App::new("TI Crawler")
+        .version("0.1.4")
+        .about("Builds a DB of all the parts and datasheets")
+        .arg(Arg::with_name("database")
+                 .short("b")
+                 .long("database")
+                 .takes_value(false)
+                 .help("Build the database"))
+        .arg(Arg::with_name("datasheets")
+                 .short("d")
+                 .long("datasheets")
+                 .takes_value(false)
+                 .help("Fetch all the datasheets"))
+        .get_matches();
 
     let pb_style = ProgressStyle::default_bar()
         .template("{msg} {bar:40.magenta/blue} {pos}/{len} ({eta})")
@@ -57,7 +72,8 @@ async fn main() -> Result<(), reqwest::Error> {
 
     println!("Start scraping TI at {}", Utc::now());
 
-    if build_db {
+	if matches.is_present("database") {
+		println!("Building the database...");
         print!("Parsing main page... ");
 
         let mut start = Instant::now();
@@ -164,7 +180,8 @@ async fn main() -> Result<(), reqwest::Error> {
             Err(why) => panic!("couldn't write to {}: {}", display, why),
             Ok(_) => println!("successfully wrote to {}", display),
         }
-    } else {
+    }
+	if matches.is_present("datasheet") {
         let path = Path::new("json/ti/data.json");
         let display = path.display();
 
