@@ -143,7 +143,7 @@ async fn main() -> Result<(), reqwest::Error> {
 
         let pb_inner = ProgressBar::new(cat.rows.len() as u64);
         pb_inner.set_style(pb_style.clone());
-        pb_inner.set_message(&format!("Fetching data-page {}...", p.0));
+        pb_inner.set_message(format!("Fetching data-page {}...", p.0));
 
         let pdfs = stream::iter(cat.rows)
             .map(|p| {

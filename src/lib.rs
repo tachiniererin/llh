@@ -54,14 +54,14 @@ pub async fn save_json(link: String, file_name: String) -> Result<(), reqwest::E
 }
 
 pub async fn save_pdf(link: String, file_name: String) -> Result<(), reqwest::Error> {
-    let mut path = Path::new(file_name.as_str());
+    let path = Path::new(file_name.as_str());
     let display = path.display();
-    let path_temp = format!("{}.1", file_name);
+    // let path_temp = format!("{}.1", file_name);
 
     // skip already downloaded PDFs for now
     if Path::new(&path).exists() {
-        path = Path::new(path_temp.as_str());
-        // return Ok(())
+        // path = Path::new(path_temp.as_str());
+        return Ok(());
     }
 
     let mut file = match File::create(&path) {
@@ -78,12 +78,10 @@ pub async fn save_pdf(link: String, file_name: String) -> Result<(), reqwest::Er
 
     let res = match res.error_for_status() {
         Ok(res) => res,
-        Err(why) => {
-            match why.status().unwrap() {
-                StatusCode::NOT_FOUND => return Ok(()),
-                StatusCode::FORBIDDEN => panic!("url {}: 403", link),
-                default => panic!("unhandled request error for {}: {}", link, default),
-            }
+        Err(why) => match why.status().unwrap() {
+            StatusCode::NOT_FOUND => return Ok(()),
+            StatusCode::FORBIDDEN => panic!("url {}: 403", link),
+            default => panic!("unhandled request error for {}: {}", link, default),
         },
     };
 
