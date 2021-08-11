@@ -5,6 +5,7 @@ extern crate serde;
 use llh as _;
 
 use chrono::Utc;
+use clap::{App, Arg};
 use futures::{stream, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{header::USER_AGENT, Url};
@@ -15,8 +16,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use clap::{Arg, App};
 
 #[derive(Deserialize)]
 struct Criteria {
@@ -51,19 +52,37 @@ async fn main() -> Result<(), reqwest::Error> {
     let mut tl: HashMap<String, (String, String)> = HashMap::new();
     let mut db: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
 
-	let matches = App::new("TI Crawler")
-        .version("0.1.4")
+    let matches = App::new("TI Crawler")
+        .version("0.1.5")
         .about("Builds a DB of all the parts and datasheets")
-        .arg(Arg::with_name("database")
-                 .short("b")
-                 .long("database")
-                 .takes_value(false)
-                 .help("Build the database"))
-        .arg(Arg::with_name("datasheets")
-                 .short("d")
-                 .long("datasheets")
-                 .takes_value(false)
-                 .help("Fetch all the datasheets"))
+        .arg(
+            Arg::with_name("database")
+                .short("b")
+                .long("database")
+                .takes_value(false)
+                .help("Build the database"),
+        )
+        .arg(
+            Arg::with_name("datasheets")
+                .short("d")
+                .long("datasheets")
+                .takes_value(false)
+                .help("Fetch all the datasheets"),
+        )
+        .arg(
+            Arg::with_name("techdocs")
+                .short("t")
+                .long("techdocs")
+                .takes_value(false)
+                .help("Build the techdoc database"),
+        )
+        .arg(
+            Arg::with_name("techdl")
+                .short("l")
+                .long("techdl")
+                .takes_value(false)
+                .help("Fetch all the techdocs"),
+        )
         .get_matches();
 
     let pb_style = ProgressStyle::default_bar()
@@ -72,8 +91,8 @@ async fn main() -> Result<(), reqwest::Error> {
 
     println!("Start scraping TI at {}", Utc::now());
 
-	if matches.is_present("database") {
-		println!("Building the database...");
+    if matches.is_present("database") {
+        println!("Building the database...");
         print!("Parsing main page... ");
 
         let mut start = Instant::now();
@@ -181,7 +200,8 @@ async fn main() -> Result<(), reqwest::Error> {
             Ok(_) => println!("successfully wrote to {}", display),
         }
     }
-	if matches.is_present("datasheet") {
+
+    if matches.is_present("datasheet") {
         let path = Path::new("json/ti/data.json");
         let display = path.display();
 
@@ -201,6 +221,99 @@ async fn main() -> Result<(), reqwest::Error> {
                 llh::save_pdf(
                     format!("https://www.ti.com/lit/gpn/{}", part),
                     format!("pdf/ti/{}.pdf", part),
+                )
+                .await
+            })
+            .buffer_unordered(3);
+
+        pdfs.for_each(|x| async {
+            match x {
+                Ok(_) => pb.inc(1),
+                Err(e) => eprintln!("Got an error: {}", e),
+            }
+        })
+        .await;
+    }
+
+    if matches.is_present("techdocs") {
+        let techdocs = Arc::new(Mutex::new(HashMap::new()));
+        let path = Path::new("json/ti/data.json");
+        let display = path.display();
+
+        let file = match File::open(&path) {
+            Err(why) => panic!("couldn't open {}: {}", display, why),
+            Ok(file) => file,
+        };
+
+        println!("Loading database...");
+
+        db = serde_json::from_reader(file).expect("unable to parse db");
+
+        let pb = ProgressBar::new(db.len() as u64);
+        pb.set_style(pb_style.clone());
+        pb.set_message("Fetching part pages...");
+
+        let urls = stream::iter(db.keys())
+            .map(|part| async move { load_techdoc(part).await })
+            .buffer_unordered(3);
+
+        urls.for_each(|x| async {
+            match x {
+                Ok(m) => {
+                    // merge with what we already have
+                    let mut techdocs = techdocs.lock().unwrap();
+                    techdocs.extend(m);
+                    pb.inc(1);
+                }
+                Err(e) => {
+                    eprintln!("Got an error: {}", e);
+                }
+            }
+        })
+        .await;
+
+        let path = Path::new("json/ti/techdocs.json");
+        let display = path.display();
+
+        let mut file = match File::create(&path) {
+            Err(why) => panic!("couldn't create {}: {}", display, why),
+            Ok(file) => file,
+        };
+        let db = techdocs.lock().unwrap();
+        match file.write_fmt(format_args!("{}", json!(db.clone()))) {
+            Err(why) => panic!("couldn't write to {}: {}", display, why),
+            Ok(_) => println!("successfully wrote to {}", display),
+        }
+    }
+
+    if matches.is_present("techdl") {
+        let path = Path::new("json/ti/techdocs.json");
+        let display = path.display();
+
+        let file = match File::open(&path) {
+            Err(why) => panic!("couldn't open {}: {}", display, why),
+            Ok(file) => file,
+        };
+
+        let db: HashMap<String, String> =
+            serde_json::from_reader(file).expect("unable to parse db");
+
+        // filter out only the lit pdfs for now
+        let keys: HashSet<String> = db
+            .keys()
+            .filter(|key| key.starts_with("/lit/pdf"))
+            .map(|key| String::from(key))
+            .collect();
+        
+        let pb = ProgressBar::new(keys.len() as u64);
+        pb.set_style(pb_style.clone());
+        pb.set_message("Fetching techdocs...");
+
+        let pdfs = stream::iter(keys)
+            .map(|doc| async move {
+                llh::save_pdf(
+                    format!("https://www.ti.com{}", doc),
+                    format!("pdf/ti/lit/{}.pdf", doc.replace("/lit/pdf/", "")),
                 )
                 .await
             })
@@ -319,4 +432,21 @@ async fn load_results(
     });
 
     Ok(())
+}
+
+async fn load_techdoc(id: &String) -> Result<HashMap<String, String>, reqwest::Error> {
+    let mut m = HashMap::new();
+    let url = format!("https://www.ti.com/product/{}", id);
+    llh::get_doc(url.as_str())
+        .await?
+        .find(Name("ti-techdocs").descendant(Name("a")))
+        .filter(|a| {
+            let title = a.attr("data-navtitle").unwrap();
+            !title.contains("Datasheet") && !title.contains("Data sheet")
+        })
+        .for_each(|a| {
+            m.insert(String::from(a.attr("href").unwrap()), a.text());
+        });
+
+    Ok(m)
 }
