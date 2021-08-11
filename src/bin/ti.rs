@@ -1,3 +1,6 @@
+#![feature(option_result_contains)]
+
+extern crate lazy_static;
 extern crate reqwest;
 extern crate select;
 extern crate serde;
@@ -11,10 +14,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{header::USER_AGENT, Url};
 use select::predicate::{Attr, Class, Name, Predicate};
 use serde::Deserialize;
-use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::prelude::*;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -44,6 +45,12 @@ struct Control {
     desc: String,
 }
 
+lazy_static::lazy_static! {
+    static ref PB_STYLE: ProgressStyle = ProgressStyle::default_bar()
+        .template("{msg} {bar:40.magenta/blue} {pos}/{len} ({eta})")
+        .progress_chars("##-");
+}
+
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let mut top: Vec<String> = Vec::new();
@@ -53,45 +60,35 @@ async fn main() -> Result<(), reqwest::Error> {
     let mut db: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
 
     let matches = App::new("TI Crawler")
-        .version("0.1.5")
+        .version("0.1.6")
         .about("Builds a DB of all the parts and datasheets")
         .arg(
             Arg::with_name("database")
                 .short("b")
                 .long("database")
-                .takes_value(false)
-                .help("Build the database"),
+                .multiple(true)
+                .takes_value(true)
+                .help("Build the database, pass datasheets and or techdocs as values"),
         )
         .arg(
-            Arg::with_name("datasheets")
+            Arg::with_name("download")
                 .short("d")
-                .long("datasheets")
-                .takes_value(false)
-                .help("Fetch all the datasheets"),
-        )
-        .arg(
-            Arg::with_name("techdocs")
-                .short("t")
-                .long("techdocs")
-                .takes_value(false)
-                .help("Build the techdoc database"),
-        )
-        .arg(
-            Arg::with_name("techdl")
-                .short("l")
-                .long("techdl")
-                .takes_value(false)
-                .help("Fetch all the techdocs"),
+                .long("download")
+                .multiple(true)
+                .takes_value(true)
+                .help("Fetch all the datasheets and/or techdocs"),
         )
         .get_matches();
 
-    let pb_style = ProgressStyle::default_bar()
-        .template("{msg} {bar:40.magenta/blue} {pos}/{len} ({eta})")
-        .progress_chars("##-");
-
     println!("Start scraping TI at {}", Utc::now());
 
-    if matches.is_present("database") {
+    if matches.is_present("database")
+        && matches
+            .values_of("database")
+            .unwrap()
+            .collect::<Vec<&str>>()
+            .contains(&"datasheets")
+    {
         println!("Building the database...");
         print!("Parsing main page... ");
 
@@ -100,7 +97,7 @@ async fn main() -> Result<(), reqwest::Error> {
         llh::get_doc("https://www.ti.com")
             .await?
             .find(
-                Attr("id", "responsiveHeader-panel-productList")
+                Attr("class", "ti_p-megaMenu-nav-list")
                     .descendant(Name("li").descendant(Name("a"))),
             )
             .filter_map(|n| n.attr("href"))
@@ -117,7 +114,7 @@ async fn main() -> Result<(), reqwest::Error> {
         }
 
         let pb = ProgressBar::new(top.len() as u64);
-        pb.set_style(pb_style.clone());
+        pb.set_style(PB_STYLE.clone());
         pb.set_message("Parsing menu pages...");
 
         start = Instant::now();
@@ -130,7 +127,7 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("Parsing menu pages took {:?}", duration);
 
         let pb = ProgressBar::new(cat_lt.len() as u64);
-        pb.set_style(pb_style.clone());
+        pb.set_style(PB_STYLE.clone());
         pb.set_message("Parsing sub categories...");
 
         start = Instant::now();
@@ -145,7 +142,7 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("Parsing sub categories took {:?}", duration);
 
         let pb = ProgressBar::new(cat_num.len() as u64);
-        pb.set_style(pb_style.clone());
+        pb.set_style(PB_STYLE.clone());
         pb.set_message("Fetching criteria information...");
 
         start = Instant::now();
@@ -160,7 +157,7 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("Fetching criteria information took {:?}", duration);
 
         let pb = ProgressBar::new(cat_num.len() as u64);
-        pb.set_style(pb_style.clone());
+        pb.set_style(PB_STYLE.clone());
         pb.set_message("Fetching results...");
         start = Instant::now();
 
@@ -174,34 +171,17 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("Fetching results took {:?}", duration);
 
         // write out the data we produced
-        let path = Path::new("json/ti/categories.json");
-        let display = path.display();
-
-        let mut file = match File::create(&path) {
-            Err(why) => panic!("couldn't create {}: {}", display, why),
-            Ok(file) => file,
-        };
-
-        match file.write_fmt(format_args!("{}", json!(tl))) {
-            Err(why) => panic!("couldn't write to {}: {}", display, why),
-            Ok(_) => println!("successfully wrote to {}", display),
-        }
-
-        let path = Path::new("json/ti/data.json");
-        let display = path.display();
-
-        let mut file = match File::create(&path) {
-            Err(why) => panic!("couldn't create {}: {}", display, why),
-            Ok(file) => file,
-        };
-
-        match file.write_fmt(format_args!("{}", json!(db))) {
-            Err(why) => panic!("couldn't write to {}: {}", display, why),
-            Ok(_) => println!("successfully wrote to {}", display),
-        }
+        llh::dump_json("json/ti/categories.json", tl.clone());
+        llh::dump_json("json/ti/data.json", db.clone());
     }
 
-    if matches.is_present("datasheets") {
+    if matches.is_present("download")
+        && matches
+            .values_of("download")
+            .unwrap()
+            .collect::<Vec<&str>>()
+            .contains(&"datasheets")
+    {
         let path = Path::new("json/ti/data.json");
         let display = path.display();
 
@@ -215,7 +195,7 @@ async fn main() -> Result<(), reqwest::Error> {
         db = serde_json::from_reader(file).expect("unable to parse db");
 
         let pb = ProgressBar::new(db.len() as u64);
-        pb.set_style(pb_style.clone());
+        pb.set_style(PB_STYLE.clone());
         pb.set_message("Fetching datasheets...");
 
         let pdfs = stream::iter(db.keys())
@@ -237,7 +217,13 @@ async fn main() -> Result<(), reqwest::Error> {
         .await;
     }
 
-    if matches.is_present("techdocs") {
+    if matches.is_present("database")
+        && matches
+            .values_of("database")
+            .unwrap()
+            .collect::<Vec<&str>>()
+            .contains(&"techdocs")
+    {
         let techdocs = Arc::new(Mutex::new(HashMap::new()));
         let path = Path::new("json/ti/data.json");
         let display = path.display();
@@ -252,11 +238,11 @@ async fn main() -> Result<(), reqwest::Error> {
         db = serde_json::from_reader(file).expect("unable to parse db");
 
         let pb = ProgressBar::new(db.len() as u64);
-        pb.set_style(pb_style.clone());
+        pb.set_style(PB_STYLE.clone());
         pb.set_message("Fetching part pages...");
 
         let urls = stream::iter(db.keys())
-            .map(|part| async move { load_techdoc(part).await })
+            .map(|part| async move { load_product_page(part).await })
             .buffer_unordered(3);
 
         urls.for_each(|x| async {
@@ -274,21 +260,17 @@ async fn main() -> Result<(), reqwest::Error> {
         })
         .await;
 
-        let path = Path::new("json/ti/techdocs.json");
-        let display = path.display();
-
-        let mut file = match File::create(&path) {
-            Err(why) => panic!("couldn't create {}: {}", display, why),
-            Ok(file) => file,
-        };
         let db = techdocs.lock().unwrap();
-        match file.write_fmt(format_args!("{}", json!(db.clone()))) {
-            Err(why) => panic!("couldn't write to {}: {}", display, why),
-            Ok(_) => println!("successfully wrote to {}", display),
-        }
+        llh::dump_json("json/ti/techdocs.json", db.clone());
     }
 
-    if matches.is_present("techdl") {
+    if matches.is_present("download")
+        && matches
+            .values_of("download")
+            .unwrap()
+            .collect::<Vec<&str>>()
+            .contains(&"techdocs")
+    {
         let path = Path::new("json/ti/techdocs.json");
         let display = path.display();
 
@@ -300,34 +282,7 @@ async fn main() -> Result<(), reqwest::Error> {
         let db: HashMap<String, String> =
             serde_json::from_reader(file).expect("unable to parse db");
 
-        // filter out only the lit pdfs for now
-        let keys: HashSet<String> = db
-            .keys()
-            .filter(|key| key.starts_with("/lit/pdf"))
-            .map(|key| String::from(key))
-            .collect();
-        
-        let pb = ProgressBar::new(keys.len() as u64);
-        pb.set_style(pb_style.clone());
-        pb.set_message("Fetching techdocs...");
-
-        let pdfs = stream::iter(keys)
-            .map(|doc| async move {
-                llh::save_pdf(
-                    format!("https://www.ti.com{}", doc),
-                    format!("pdf/ti/lit/{}.pdf", doc.replace("/lit/pdf/", "")),
-                )
-                .await
-            })
-            .buffer_unordered(3);
-
-        pdfs.for_each(|x| async {
-            match x {
-                Ok(_) => pb.inc(1),
-                Err(e) => eprintln!("Got an error: {}", e),
-            }
-        })
-        .await;
+        load_techdocs(db).await;
     }
 
     Ok(())
@@ -436,7 +391,7 @@ async fn load_results(
     Ok(())
 }
 
-async fn load_techdoc(id: &String) -> Result<HashMap<String, String>, reqwest::Error> {
+async fn load_product_page(id: &String) -> Result<HashMap<String, String>, reqwest::Error> {
     let mut m = HashMap::new();
     let url = format!("https://www.ti.com/product/{}", id);
     llh::get_doc(url.as_str())
@@ -451,4 +406,35 @@ async fn load_techdoc(id: &String) -> Result<HashMap<String, String>, reqwest::E
         });
 
     Ok(m)
+}
+
+async fn load_techdocs(db: HashMap<String, String>) {
+    // filter out only the lit pdfs for now
+    let keys: HashSet<String> = db
+        .keys()
+        .filter(|key| key.starts_with("/lit/pdf"))
+        .map(|key| String::from(key))
+        .collect();
+
+    let pb = ProgressBar::new(keys.len() as u64);
+    pb.set_style(PB_STYLE.clone());
+    pb.set_message("Fetching techdocs...");
+
+    let pdfs = stream::iter(keys)
+        .map(|doc| async move {
+            llh::save_pdf(
+                format!("https://www.ti.com{}", doc),
+                format!("pdf/ti/lit/{}.pdf", doc.replace("/lit/pdf/", "")),
+            )
+            .await
+        })
+        .buffer_unordered(3);
+
+    pdfs.for_each(|x| async {
+        match x {
+            Ok(_) => pb.inc(1),
+            Err(e) => eprintln!("Got an error: {}", e),
+        }
+    })
+    .await;
 }

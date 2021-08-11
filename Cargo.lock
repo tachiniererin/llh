@@ -450,8 +450,9 @@ dependencies = [
 
 [[package]]
 name = "indicatif"
-version = "0.17.0"
-source = "git+https://github.com/mitsuhiko/indicatif.git?branch=main#79ef74a4e9f74c8d135399bd2ebb864c5eb81acd"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d207dc617c7a380ab07ff572a6e52fa202a2a8f355860ac9c38e23f8196be1b"
 dependencies = [
  "console",
  "lazy_static",
@@ -503,12 +504,13 @@ checksum = "a7f823d141fe0a24df1e23b4af4e3c7ba9e5966ec514ea068c93024aa7deb765"
 
 [[package]]
 name = "llh"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "chrono",
  "clap",
  "futures",
  "indicatif",
+ "lazy_static",
  "reqwest",
  "select",
  "serde",

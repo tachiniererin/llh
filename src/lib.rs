@@ -4,6 +4,7 @@ extern crate serde;
 
 use reqwest::{header::USER_AGENT, StatusCode, Url};
 use select::document::Document;
+use serde_json::json;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
@@ -95,4 +96,18 @@ pub async fn save_pdf(link: String, file_name: String) -> Result<(), reqwest::Er
 
 pub async fn empty() -> Result<(), reqwest::Error> {
     Ok(())
+}
+
+pub fn dump_json<T: serde::Serialize>(f: &str, m: T) {
+    let path = Path::new(f);
+    let display = path.display();
+
+    let mut file = match File::create(&path) {
+        Err(why) => panic!("couldn't create {}: {}", display, why),
+        Ok(file) => file,
+    };
+    match file.write_fmt(format_args!("{}", json!(m))) {
+        Err(why) => panic!("couldn't write to {}: {}", display, why),
+        Ok(_) => println!("successfully wrote to {}", display),
+    }
 }
