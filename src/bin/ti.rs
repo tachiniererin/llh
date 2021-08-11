@@ -201,7 +201,7 @@ async fn main() -> Result<(), reqwest::Error> {
         }
     }
 
-    if matches.is_present("datasheet") {
+    if matches.is_present("datasheets") {
         let path = Path::new("json/ti/data.json");
         let display = path.display();
 
@@ -209,6 +209,8 @@ async fn main() -> Result<(), reqwest::Error> {
             Err(why) => panic!("couldn't open {}: {}", display, why),
             Ok(file) => file,
         };
+
+        println!("Loading Database...");
 
         db = serde_json::from_reader(file).expect("unable to parse db");
 
@@ -220,7 +222,7 @@ async fn main() -> Result<(), reqwest::Error> {
             .map(|part| async move {
                 llh::save_pdf(
                     format!("https://www.ti.com/lit/gpn/{}", part),
-                    format!("pdf/ti/{}.pdf", part),
+                    format!("pdf/ti/gpn/{}.pdf", part),
                 )
                 .await
             })

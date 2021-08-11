@@ -5,8 +5,11 @@
 /json/st/*.json
 
 # downloaded datasheets
-/pdf/ti/*
-/pdf/st/*
+/pdf/ti/gpn/*.pdf
+/pdf/ti/lit/*.pdf
+/pdf/ti/lit/*.zip
+
+/pdf/st/*.pdf
 
 # picolisp!?
 /pil
