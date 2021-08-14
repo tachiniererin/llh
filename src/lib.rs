@@ -1,13 +1,23 @@
+extern crate lazy_static;
 extern crate reqwest;
 extern crate select;
 extern crate serde;
 
+use indicatif::ProgressStyle;
 use reqwest::{header::USER_AGENT, StatusCode, Url};
 use select::document::Document;
 use serde_json::json;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
+
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+lazy_static::lazy_static! {
+    pub static ref PB_STYLE: ProgressStyle = ProgressStyle::default_bar()
+        .template("{msg} {bar:40.magenta/blue} {pos}/{len} ({eta})")
+        .progress_chars("##-");
+}
 
 pub async fn get_doc(link: &str) -> Result<Document, reqwest::Error> {
     let client = reqwest::Client::new();

@@ -1,6 +1,5 @@
 #![feature(option_result_contains)]
 
-extern crate lazy_static;
 extern crate reqwest;
 extern crate select;
 extern crate serde;
@@ -10,7 +9,7 @@ use llh as _;
 use chrono::Utc;
 use clap::{App, Arg};
 use futures::{stream, StreamExt};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use reqwest::{header::USER_AGENT, Url};
 use select::predicate::{Attr, Class, Name, Predicate};
 use serde::Deserialize;
@@ -45,12 +44,6 @@ struct Control {
     desc: String,
 }
 
-lazy_static::lazy_static! {
-    static ref PB_STYLE: ProgressStyle = ProgressStyle::default_bar()
-        .template("{msg} {bar:40.magenta/blue} {pos}/{len} ({eta})")
-        .progress_chars("##-");
-}
-
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let mut top: Vec<String> = Vec::new();
@@ -60,7 +53,7 @@ async fn main() -> Result<(), reqwest::Error> {
     let mut db: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
 
     let matches = App::new("TI Crawler")
-        .version("0.1.6")
+        .version(llh::VERSION)
         .about("Builds a DB of all the parts and datasheets")
         .arg(
             Arg::with_name("database")
@@ -114,7 +107,7 @@ async fn main() -> Result<(), reqwest::Error> {
         }
 
         let pb = ProgressBar::new(top.len() as u64);
-        pb.set_style(PB_STYLE.clone());
+        pb.set_style(llh::PB_STYLE.clone());
         pb.set_message("Parsing menu pages...");
 
         start = Instant::now();
@@ -127,7 +120,7 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("Parsing menu pages took {:?}", duration);
 
         let pb = ProgressBar::new(cat_lt.len() as u64);
-        pb.set_style(PB_STYLE.clone());
+        pb.set_style(llh::PB_STYLE.clone());
         pb.set_message("Parsing sub categories...");
 
         start = Instant::now();
@@ -142,7 +135,7 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("Parsing sub categories took {:?}", duration);
 
         let pb = ProgressBar::new(cat_num.len() as u64);
-        pb.set_style(PB_STYLE.clone());
+        pb.set_style(llh::PB_STYLE.clone());
         pb.set_message("Fetching criteria information...");
 
         start = Instant::now();
@@ -157,7 +150,7 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("Fetching criteria information took {:?}", duration);
 
         let pb = ProgressBar::new(cat_num.len() as u64);
-        pb.set_style(PB_STYLE.clone());
+        pb.set_style(llh::PB_STYLE.clone());
         pb.set_message("Fetching results...");
         start = Instant::now();
 
@@ -195,7 +188,7 @@ async fn main() -> Result<(), reqwest::Error> {
         db = serde_json::from_reader(file).expect("unable to parse db");
 
         let pb = ProgressBar::new(db.len() as u64);
-        pb.set_style(PB_STYLE.clone());
+        pb.set_style(llh::PB_STYLE.clone());
         pb.set_message("Fetching datasheets...");
 
         let pdfs = stream::iter(db.keys())
@@ -238,7 +231,7 @@ async fn main() -> Result<(), reqwest::Error> {
         db = serde_json::from_reader(file).expect("unable to parse db");
 
         let pb = ProgressBar::new(db.len() as u64);
-        pb.set_style(PB_STYLE.clone());
+        pb.set_style(llh::PB_STYLE.clone());
         pb.set_message("Fetching part pages...");
 
         let urls = stream::iter(db.keys())
@@ -417,7 +410,7 @@ async fn load_techdocs(db: HashMap<String, String>) {
         .collect();
 
     let pb = ProgressBar::new(keys.len() as u64);
-    pb.set_style(PB_STYLE.clone());
+    pb.set_style(llh::PB_STYLE.clone());
     pb.set_message("Fetching techdocs...");
 
     let pdfs = stream::iter(keys)

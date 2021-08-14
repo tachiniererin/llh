@@ -3,13 +3,15 @@
 # json product data output
 /json/ti/*.json
 /json/st/*.json
+/json/st/datapages/*.json
 
 # downloaded datasheets
 /pdf/ti/gpn/*.pdf
 /pdf/ti/lit/*.pdf
 /pdf/ti/lit/*.zip
 
-/pdf/st/*.pdf
+/pdf/st/techdocs/*.pdf
+/pdf/st/datasheets/*.pdf
 
 # picolisp!?
 /pil
